@@ -13,10 +13,16 @@ Run with:
 """
 
 import asyncio
+import sys
 
 from framework.graph import EdgeCondition, EdgeSpec, Goal, GraphSpec, NodeSpec
 from framework.graph.executor import GraphExecutor
 from framework.runtime.core import Runtime
+
+
+# Ensure emoji output works on Windows terminals.
+if sys.platform == "win32" and hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
 
 
 # 1. Define Node Logic (Pure Python Functions)
