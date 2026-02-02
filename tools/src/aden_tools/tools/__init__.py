@@ -39,6 +39,7 @@ from .file_system_toolkits.replace_file_content import (
 from .file_system_toolkits.view_file import register_tools as register_view_file
 from .file_system_toolkits.write_to_file import register_tools as register_write_to_file
 from .hubspot_tool import register_tools as register_hubspot
+from .parquet_tool import register_tools as register_parquet
 from .pdf_read_tool import register_tools as register_pdf_read
 from .web_scrape_tool import register_tools as register_web_scrape
 from .web_search_tool import register_tools as register_web_search
@@ -81,6 +82,7 @@ def register_all_tools(
     register_grep_search(mcp)
     register_execute_command(mcp)
     register_csv(mcp)
+    register_parquet(mcp)
 
     return [
         "example_tool",
@@ -100,6 +102,9 @@ def register_all_tools(
         "csv_append",
         "csv_info",
         "csv_sql",
+        "parquet_read",
+        "parquet_write",
+        "parquet_info",
         "send_email",
         "send_budget_alert_email",
         "hubspot_search_contacts",

@@ -75,6 +75,9 @@ python mcp_server.py
 | `web_search`           | Search the web (Google or Brave, auto-detected) |
 | `web_scrape`           | Scrape and extract content from webpages       |
 | `pdf_read`             | Read and extract text from PDF files           |
+| `parquet_read`         | Read parquet files with filters/grouping       |
+| `parquet_write`        | Write parquet files                            |
+| `parquet_info`         | Inspect parquet metadata                       |
 
 ## Project Structure
 
