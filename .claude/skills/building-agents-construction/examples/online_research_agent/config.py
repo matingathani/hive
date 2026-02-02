@@ -1,23 +1,63 @@
 """Runtime configuration."""
 
 import json
+import logging
 from dataclasses import dataclass, field
 from pathlib import Path
+
+
+logger = logging.getLogger(__name__)
+
+DEFAULT_MODEL = "anthropic/claude-sonnet-4-20250514"
 
 
 def _load_preferred_model() -> str:
     """Load preferred model from ~/.hive/configuration.json."""
     config_path = Path.home() / ".hive" / "configuration.json"
-    if config_path.exists():
-        try:
-            with open(config_path) as f:
-                config = json.load(f)
-            llm = config.get("llm", {})
-            if llm.get("provider") and llm.get("model"):
-                return f"{llm['provider']}/{llm['model']}"
-        except Exception:
-            pass
-    return "anthropic/claude-sonnet-4-20250514"
+    if not config_path.exists():
+        return DEFAULT_MODEL
+
+    try:
+        with open(config_path) as f:
+            config = json.load(f)
+
+        llm = config.get("llm", {})
+        provider = llm.get("provider")
+        model = llm.get("model")
+        if provider and model:
+            return f"{provider}/{model}"
+
+        logger.warning(
+            "Configuration file %s is missing 'llm.provider' or 'llm.model'. "
+            "Falling back to default model: %s",
+            config_path,
+            DEFAULT_MODEL,
+        )
+    except json.JSONDecodeError as exc:
+        logger.error(
+            "Invalid JSON in configuration file %s at line %d, column %d: %s. "
+            "Falling back to default model: %s",
+            config_path,
+            exc.lineno,
+            exc.colno,
+            exc.msg,
+            DEFAULT_MODEL,
+        )
+    except (OSError, IOError) as exc:
+        logger.error(
+            "Error reading configuration file %s: %s. Falling back to default model: %s",
+            config_path,
+            exc,
+            DEFAULT_MODEL,
+        )
+    except Exception:
+        logger.exception(
+            "Unexpected error loading configuration file %s. Falling back to default model: %s",
+            config_path,
+            DEFAULT_MODEL,
+        )
+
+    return DEFAULT_MODEL
 
 
 @dataclass
