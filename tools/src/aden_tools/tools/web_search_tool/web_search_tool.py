@@ -11,6 +11,7 @@ Auto-detection: If provider="auto", tries Brave first (backward compatible), the
 from __future__ import annotations
 
 import os
+import time
 from typing import TYPE_CHECKING, Literal
 
 import httpx
@@ -18,6 +19,50 @@ from fastmcp import FastMCP
 
 if TYPE_CHECKING:
     from aden_tools.credentials import CredentialStoreAdapter
+
+
+def _get_env_int(name: str, default: int) -> int:
+    try:
+        return int(os.getenv(name, str(default)))
+    except ValueError:
+        return default
+
+
+CACHE_TTL_SECONDS = _get_env_int("WEB_SEARCH_CACHE_TTL_SECONDS", 300)
+CACHE_MAX_SIZE = _get_env_int("WEB_SEARCH_CACHE_MAX_SIZE", 128)
+_CACHE: dict[str, tuple[float, dict]] = {}
+
+
+def _cache_key(
+    query: str,
+    num_results: int,
+    country: str,
+    language: str,
+    provider: str,
+) -> str:
+    return f"{provider}|{query}|{num_results}|{country}|{language}"
+
+
+def _get_cached(key: str) -> dict | None:
+    if CACHE_TTL_SECONDS <= 0:
+        return None
+    cached = _CACHE.get(key)
+    if not cached:
+        return None
+    timestamp, payload = cached
+    if time.time() - timestamp > CACHE_TTL_SECONDS:
+        _CACHE.pop(key, None)
+        return None
+    return payload
+
+
+def _set_cache(key: str, payload: dict) -> None:
+    if CACHE_MAX_SIZE <= 0:
+        return
+    if len(_CACHE) >= CACHE_MAX_SIZE:
+        oldest_key = min(_CACHE, key=lambda k: _CACHE[k][0])
+        _CACHE.pop(oldest_key, None)
+    _CACHE[key] = (time.time(), payload)
 
 
 def register_tools(
@@ -168,14 +213,37 @@ def register_tools(
         google_available = creds["google_api_key"] and creds["google_cse_id"]
         brave_available = bool(creds["brave_api_key"])
 
+        if provider == "auto":
+            if brave_available:
+                provider = "brave"
+            elif google_available:
+                provider = "google"
+            else:
+                return {
+                    "error": "No search credentials configured",
+                    "help": "Set either GOOGLE_API_KEY+GOOGLE_CSE_ID or BRAVE_SEARCH_API_KEY",
+                }
+
+        if provider == "google" and not google_available:
+            return {
+                "error": "Google credentials not configured",
+                "help": "Set GOOGLE_API_KEY and GOOGLE_CSE_ID environment variables",
+            }
+
+        if provider == "brave" and not brave_available:
+            return {
+                "error": "Brave credentials not configured",
+                "help": "Set BRAVE_SEARCH_API_KEY environment variable",
+            }
+
+        cache_key = _cache_key(query, num_results, country, language, provider)
+        cached = _get_cached(cache_key)
+        if cached is not None:
+            return cached
+
         try:
             if provider == "google":
-                if not google_available:
-                    return {
-                        "error": "Google credentials not configured",
-                        "help": "Set GOOGLE_API_KEY and GOOGLE_CSE_ID environment variables",
-                    }
-                return _search_google(
+                response = _search_google(
                     query,
                     num_results,
                     country,
@@ -183,32 +251,13 @@ def register_tools(
                     creds["google_api_key"],
                     creds["google_cse_id"],
                 )
+            else:
+                response = _search_brave(query, num_results, country, creds["brave_api_key"])
 
-            elif provider == "brave":
-                if not brave_available:
-                    return {
-                        "error": "Brave credentials not configured",
-                        "help": "Set BRAVE_SEARCH_API_KEY environment variable",
-                    }
-                return _search_brave(query, num_results, country, creds["brave_api_key"])
+            if "error" not in response:
+                _set_cache(cache_key, response)
 
-            else:  # auto - try Brave first for backward compatibility
-                if brave_available:
-                    return _search_brave(query, num_results, country, creds["brave_api_key"])
-                elif google_available:
-                    return _search_google(
-                        query,
-                        num_results,
-                        country,
-                        language,
-                        creds["google_api_key"],
-                        creds["google_cse_id"],
-                    )
-                else:
-                    return {
-                        "error": "No search credentials configured",
-                        "help": "Set either GOOGLE_API_KEY+GOOGLE_CSE_ID or BRAVE_SEARCH_API_KEY",
-                    }
+            return response
 
         except httpx.TimeoutException:
             return {"error": "Search request timed out"}
